@@ -4,7 +4,7 @@ import * as Sentry from '@sentry/cloudflare'
 import { renderToStream } from 'remix/component/server'
 import { type RemixNode } from 'remix/component'
 import { buildStylesheetHref, getClientBuildId } from '#app/client-build-id.ts'
-import { getClientEntryAssets } from '#app/client-entry-assets.ts'
+import { resolveClientAssets } from '#app/client-assets.ts'
 import { getCanonicalAppBaseUrl } from '#worker/app-base-url.ts'
 import { setAuthSessionSecret } from '#app/auth-session.ts'
 import {
@@ -32,35 +32,6 @@ import {
 	pushServerTiming,
 	type ServerTimingEntry,
 } from '#worker/server-timing.ts'
-
-/**
- * Maps a Remix `clientEntry` id onto the public Vite client module.
- * Production SSR often leaves `import.meta.url` empty, so the entry id is
- * `/client-entry.js#AppRoot` while the script tag is `/assets/entry-*.js`.
- * Without this hook, `#rmx-data` tells the browser to import the deleted
- * esbuild path and hydration 404s.
- *
- * Only the app root lives in that entry bundle. Any other island — Pitlane's
- * dev `<HMR />`, whose id is its own dev-server URL — must be imported from
- * the module it names; routed through the entry it fails with "Unknown client
- * export", the island never hydrates, and server-data revalidation is dead.
- */
-export function resolveOriginClientEntry({
-	entryId,
-	href,
-	preloads,
-}: {
-	entryId: string
-	href: string
-	preloads: Array<string>
-}) {
-	const [moduleUrl = '', rawExportName] = entryId.split('#')
-	const exportName = rawExportName?.trim() || 'AppRoot'
-	if (exportName !== 'AppRoot' && moduleUrl.startsWith('/')) {
-		return { href: moduleUrl, exportName, preloads: [] }
-	}
-	return { href, exportName, preloads }
-}
 
 export type RenderAppPageInput = {
 	request: Request
@@ -110,8 +81,6 @@ export async function renderAppPage(input: RenderAppPageInput) {
 	)
 	const pageLoaderData = { ...loaderData, youtubeWatch }
 	const url = `${requestUrl.pathname}${requestUrl.search}${requestUrl.hash}`
-	const clientAssets = getClientEntryAssets(requestUrl.pathname)
-	const clientEntryHref = clientAssets.entry ?? '/client-entry.js'
 	const stylesheetHref = buildStylesheetHref(getClientBuildId(getEnv(env)))
 	// Canonical/OG head URLs use the configured canonical origin so pages
 	// dual-served from a legacy host still point crawlers at the canonical
@@ -136,15 +105,15 @@ export async function renderAppPage(input: RenderAppPageInput) {
 	const response = await pushServerTiming(serverTiming, 'ssr', async () => {
 		// Warm lazy route chunks before streaming so SSR HTML includes the real
 		// route tree (dynamic import resolves in the worker bundle), and resolve
-		// the modulepreload hints and inline stylesheet in parallel.
-		const [, inlineStylesheet] = await Promise.all([
+		// the browser scripts and inline stylesheet in parallel.
+		const [, inlineStylesheet, clientAssets] = await Promise.all([
 			preloadClientRouteModules(`${requestUrl.pathname}${requestUrl.search}`),
 			getInlineStylesheet({
 				assets: env.ASSETS,
 				buildId: getClientBuildId(parsedEnv),
 			}),
+			resolveClientAssets(requestUrl.pathname),
 		])
-		const modulePreloadHrefs = clientAssets.js.map((asset) => asset.href)
 
 		const stream = renderToStream(
 			// Remix server components accept props via handle.props; JSX typing is loose here.
@@ -158,9 +127,8 @@ export async function renderAppPage(input: RenderAppPageInput) {
 					notFound={notFound}
 					unauthorized={unauthorized}
 					internalError={internalError}
-					clientEntryHref={clientEntryHref}
+					scripts={clientAssets?.scripts ?? null}
 					stylesheetHref={stylesheetHref}
-					modulePreloadHrefs={modulePreloadHrefs}
 					inlineStylesheet={inlineStylesheet}
 					sentryConfig={sentryConfig}
 					fathomSiteId={fathomSiteId}
@@ -168,13 +136,7 @@ export async function renderAppPage(input: RenderAppPageInput) {
 			) as RemixNode,
 			{
 				frameSrc: request.url,
-				resolveClientEntry(entryId) {
-					return resolveOriginClientEntry({
-						entryId,
-						href: clientEntryHref,
-						preloads: modulePreloadHrefs,
-					})
-				},
+				resolveClientEntry: clientAssets?.resolveClientEntry,
 				resolveFrame(src, target, context) {
 					return resolveRegisteredFrameHtml({
 						src,

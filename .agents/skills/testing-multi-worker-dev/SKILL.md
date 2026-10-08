@@ -21,15 +21,16 @@ description:
   to `.tmp/dev-server.log` and prints that path. Do not inventory Cursor
   terminal files or curl 3742 as a substitute.
 - Run interactive `npm run dev` in tmux when you need the CLI shortcuts; it
-  starts the mock Cloudflare API worker, then Vite (`@pitlane/dev` +
-  `@cloudflare/vite-plugin`) so origin SSR and the client hydrate in one workerd
-  graph. Vite writes `packages/worker/wrangler-local-dev.generated.json` so
-  origin `env` gets `WRANGLER_IS_LOCAL_DEV` and mock `CLOUDFLARE_API_*` vars
-  (the Cloudflare Vite plugin does not map process env onto Worker bindings).
-  Jobs and highlight join as Vite auxiliary workers in every serve, including
-  `CLOUDFLARE_ENV=test`. Generated platform and runtime configs join only
-  outside the test env. Default port 3742; the CLI picks the next free port if
-  taken.
+  starts the mock Cloudflare API worker, then Vite (`@pitlane/vite-plugin-remix`
+  - `@cloudflare/vite-plugin`) so origin SSR and the client hydrate in one
+    workerd graph. Vite writes
+    `packages/worker/wrangler-local-dev.generated.json` so origin `env` gets
+    `WRANGLER_IS_LOCAL_DEV` and mock `CLOUDFLARE_API_*` vars (the Cloudflare
+    Vite plugin does not map process env onto Worker bindings). Jobs and
+    highlight join as Vite auxiliary workers in every serve, including
+    `CLOUDFLARE_ENV=test`. Generated platform and runtime configs join only
+    outside the test env. Default port 3742; the CLI picks the next free port if
+    taken.
 - Local dev uses `--env production` (CLOUDFLARE_ENV defaults to production in
   `wrangler-env.ts`).
 - Migrate + seed login: `npm run migrate:local` then

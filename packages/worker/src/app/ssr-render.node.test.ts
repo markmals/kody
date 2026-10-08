@@ -1,3 +1,5 @@
+import { createElement, type RemixNode } from 'remix/component'
+import { renderToString } from 'remix/component/server'
 import { expect, test, vi } from 'vitest'
 import { type CommunityListingWithAggregates } from '#worker/community/types.ts'
 import {
@@ -21,11 +23,8 @@ import { createOnboardingHandler } from '#app/handlers/onboarding.ts'
 import { createPendingVerificationHandler } from '#app/handlers/pending-verification.ts'
 import { createResetPasswordHandler } from '#app/handlers/reset-password.ts'
 import { resetInlineStylesheetCache } from '#app/inline-stylesheet.ts'
-import {
-	renderAppPage,
-	resolveOriginClientEntry,
-	type RenderAppPageInput,
-} from '#app/ssr-render.tsx'
+import { renderAppPage, type RenderAppPageInput } from '#app/ssr-render.tsx'
+import { SsrDocument } from '#app/ssr-document.tsx'
 import {
 	getReadNextBlogPost,
 	listBlogPosts,
@@ -318,39 +317,30 @@ const emptyAccountConnections = {
 	canSyncDiscordRoles: false,
 }
 
-test('resolveOriginClientEntry maps Remix entry IDs onto the Vite client href', () => {
-	const href = '/assets/entry-DU-pHDbL.js'
+test('SsrDocument preloads the entry chunks and boots the entry after the scroll restoration script', async () => {
+	const html = await renderToString(
+		createElement(SsrDocument, {
+			url: '/404',
+			session: null,
+			notFound: true,
+			scripts: {
+				href: '/assets/entry-DU0zLU2t.js',
+				preloads: [
+					'/assets/entry-DU0zLU2t.js',
+					'/assets/auth-area-BZaLSnX1.js',
+				],
+			},
+		}) as RemixNode,
+	)
+	expectHtml(html, [
+		'<link rel="modulepreload" href="/assets/entry-DU0zLU2t.js" />',
+		'<link rel="modulepreload" href="/assets/auth-area-BZaLSnX1.js" />',
+	])
+	const restoreScriptIndex = html.indexOf(getScrollRestorationInlineScript())
+	expect(restoreScriptIndex).toBeGreaterThan(html.indexOf('<div id="root">'))
 	expect(
-		resolveOriginClientEntry({
-			entryId: '/client-entry.js#AppRoot',
-			href,
-			preloads: ['/assets/auth-area-BZaLSnX1.js'],
-		}),
-	).toEqual({
-		href,
-		exportName: 'AppRoot',
-		preloads: ['/assets/auth-area-BZaLSnX1.js'],
-	})
-	expect(
-		resolveOriginClientEntry({
-			entryId: 'file:///app/app-root.tsx',
-			href,
-			preloads: [],
-		}),
-	).toEqual({ href, exportName: 'AppRoot', preloads: [] })
-	// Pitlane's dev `<HMR />` island names its own dev-server module; the client
-	// entry bundle does not export it.
-	expect(
-		resolveOriginClientEntry({
-			entryId: '/@id/__x00__pitlane:dev#HMR',
-			href: '/packages/worker/client/entry.tsx',
-			preloads: ['/packages/worker/client/routes/auth-area.ts'],
-		}),
-	).toEqual({
-		href: '/@id/__x00__pitlane:dev',
-		exportName: 'HMR',
-		preloads: [],
-	})
+		html.indexOf('<script type="module" src="/assets/entry-DU0zLU2t.js">'),
+	).toBeGreaterThan(restoreScriptIndex)
 })
 
 test('SSR HTML routes render page content and embedded loader data', async () => {
@@ -387,7 +377,6 @@ test('SSR HTML routes render page content and embedded loader data', async () =>
 	)
 	const communityEntry = Object.values(parseRmxData(community.html).h)[0]
 	expect(communityEntry?.exportName).toBe('AppRoot')
-	expect(communityEntry?.moduleUrl).toBe('/client-entry.js')
 	expect(communityEntry?.props.loaderData?.community).toBeUndefined()
 	expect(communityMockModule.listCommunityIndexOverview).toHaveBeenCalledTimes(
 		1,
@@ -747,12 +736,6 @@ test('anonymous homepage document: doctype, preloads, scroll restoration, loop t
 		'aria-label="Agents Kody plugs into"',
 	])
 
-	const restoreScriptIndex = html.indexOf(getScrollRestorationInlineScript())
-	expect(restoreScriptIndex).toBeGreaterThan(html.indexOf('<div id="root">'))
-	expect(restoreScriptIndex).toBeGreaterThan(0)
-	expect(html.indexOf('type="module" src="')).toBeGreaterThan(
-		restoreScriptIndex,
-	)
 	expect(response.headers.get('Content-Security-Policy')).toBe(
 		firstPartySecurityHeaders['Content-Security-Policy'],
 	)

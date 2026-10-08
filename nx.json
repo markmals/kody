@@ -61,7 +61,8 @@
 				{ "env": "CI" },
 				"{workspaceRoot}/vitest*.ts",
 				"{workspaceRoot}/tools/**/*",
-				"{workspaceRoot}/wrangler-env.ts"
+				"{workspaceRoot}/wrangler-env.ts",
+				"{workspaceRoot}/vite.config.ts"
 			]
 		},
 		"prepare-e2e-env": {

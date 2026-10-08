@@ -1,3 +1,4 @@
+import { revalidate } from '@pitlane/vite-plugin-remix/hmr'
 import { run } from 'remix/component'
 import { resolveClientFrame } from '#client/frame-resolve.ts'
 import { preloadClientRouteModules } from '#client/lazy-route.tsx'
@@ -5,7 +6,6 @@ import {
 	captureClientException,
 	initSentryClient,
 } from '#client/sentry-client.ts'
-import { AppRoot } from './app-root.tsx'
 import { ensureConstructableStylesheets } from './ensure-constructable-stylesheets.ts'
 import { ensureCryptoRandomUUID } from './ensure-crypto-random-uuid.ts'
 import { ensureObjectHasOwn } from './ensure-object-has-own.ts'
@@ -23,21 +23,6 @@ ensureObjectHasOwn()
 // this is not Safari 11 support (KODY-7P remains unsupported).
 ensurePromiseWithResolvers()
 initSentryClient(document)
-
-const clientRegistry: Record<string, typeof AppRoot> = {
-	AppRoot,
-}
-
-function isBootModuleUrl(moduleUrl: string) {
-	if (moduleUrl === import.meta.url) return true
-	try {
-		const requested = new URL(moduleUrl, 'https://kody.local').pathname
-		const boot = new URL(import.meta.url, 'https://kody.local').pathname
-		return requested === boot || requested === '/client-entry.js'
-	} catch {
-		return moduleUrl === '/client-entry.js'
-	}
-}
 
 function requireClientExport(exportName: string, value: unknown) {
 	if (typeof value !== 'function') {
@@ -82,9 +67,6 @@ async function boot() {
 
 	const app = run({
 		async loadModule(moduleUrl, exportName) {
-			if (isBootModuleUrl(moduleUrl)) {
-				return requireClientExport(exportName, clientRegistry[exportName])
-			}
 			const mod = (await import(/* @vite-ignore */ moduleUrl)) as Record<
 				string,
 				unknown
@@ -95,6 +77,10 @@ async function boot() {
 			return resolveClientFrame(src, options)
 		},
 	})
+
+	if (import.meta.hot) {
+		import.meta.hot.on('server:update', () => revalidate(app))
+	}
 
 	app.addEventListener('error', (event) => {
 		console.error('Client hydration error:', event.error)

@@ -46,11 +46,11 @@ Prerequisites, install, and `npm run dev` notes. See the
   writes `.tmp/dev-server.log` (printed as `Dev server log: <path>`). Agents
   should call this instead of reconstructing a startup playbook from terminal
   files.
-- `npm run dev` starts the Cloudflare API mock, then Vite (`@pitlane/dev` +
-  `@cloudflare/vite-plugin`) so origin SSR runs inside workerd with client HMR.
-  Jobs and highlight join as Vite auxiliary workers in every serve, including
-  `CLOUDFLARE_ENV=test`. Platform and runtime join only outside the test env.
-  Origin `env` bindings come from generated
+- `npm run dev` starts the Cloudflare API mock, then Vite
+  (`@pitlane/vite-plugin-remix` + `@cloudflare/vite-plugin`) so origin SSR runs
+  inside workerd with client HMR. Jobs and highlight join as Vite auxiliary
+  workers in every serve, including `CLOUDFLARE_ENV=test`. Platform and runtime
+  join only outside the test env. Origin `env` bindings come from generated
   `packages/worker/wrangler-local-dev.generated.json` (`WRANGLER_IS_LOCAL_DEV`
   and mock `CLOUDFLARE_API_*`). It sets `CLOUDFLARE_API_BASE_URL`,
   `CLOUDFLARE_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID` to the local Cloudflare

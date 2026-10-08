@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cloudflare } from '@cloudflare/vite-plugin'
-import { remix } from '@pitlane/dev'
+import { remix } from '@pitlane/vite-plugin-remix'
 import { defineConfig } from 'vite'
 import { parseJsonc } from './tools/ci/resource-utils.ts'
 import {
@@ -16,6 +16,7 @@ import { resolveLocalD1PersistPath } from './tools/local-d1-persist.ts'
 import { ensureGuideCatalogModules } from './tools/build-guide-catalog-modules.ts'
 import { ensureWorkerBundlerModules } from './tools/build-worker-bundler-modules.ts'
 import { markdownAsText } from './tools/vite-markdown-as-text.ts'
+import { outputDirectory } from './tools/vite-output-directory.ts'
 import { workerWholeGraphReload } from './tools/vite-worker-whole-graph-reload.ts'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -113,11 +114,12 @@ export default defineConfig(async ({ command }) => {
 		}
 	}
 
+	const outDir = process.env.KODY_VITE_OUTDIR ?? 'dist'
 	return {
 		publicDir: 'packages/worker/public',
 		build: {
 			sourcemap: true,
-			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
+			outDir,
 		},
 		plugins: [
 			markdownAsText(),
@@ -126,7 +128,11 @@ export default defineConfig(async ({ command }) => {
 				clientEntry: 'packages/worker/client/entry.tsx',
 				serverEntry: resolveWorkerEntry(serveWranglerConfigPath),
 				serverEnvironments: ['ssr'],
+				// The CSP allows no inline scripts, which rules out the
+				// `<script type="importmap">` chunk import maps need.
+				assets: { chunkImportMap: false },
 			}),
+			outputDirectory(outDir),
 			cloudflare({
 				configPath: serveWranglerConfigPath,
 				viteEnvironment: { name: 'ssr' },
@@ -138,20 +144,6 @@ export default defineConfig(async ({ command }) => {
 		],
 		resolve: {
 			alias: [
-				{
-					find: /#app\/hmr\.ts$/,
-					replacement: path.resolve(
-						root,
-						'packages/worker/src/app/hmr.vite.ts',
-					),
-				},
-				{
-					find: /#app\/client-entry-assets\.ts$/,
-					replacement: path.resolve(
-						root,
-						'packages/worker/src/app/client-entry-assets.vite.ts',
-					),
-				},
 				alias('#app', path.resolve(root, 'packages/worker/src/app')),
 				alias('#client', path.resolve(root, 'packages/worker/client')),
 				alias('#universal', path.resolve(root, 'packages/worker/universal')),

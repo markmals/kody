@@ -152,3 +152,5 @@ pushes. See the [setup index](./index.md) for the other setup pages.
 - `npm run test:mcp` runs MCP server E2E tests and also depends on the cached
   `worker:prepare-e2e-env` target, which writes `packages/worker/.env` from
   `.env.example` when needed and backfills `COOKIE_SECRET` before the test run.
+  The suite's global setup builds the origin with Vite (`CLOUDFLARE_ENV=test`)
+  into a temp dir once, and every file boots that built worker with Wrangler.

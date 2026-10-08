@@ -119,7 +119,7 @@
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@mswjs/interceptors": "^0.45.6",
-    "@pitlane/dev": "^0.7.0",
+    "@pitlane/vite-plugin-remix": "^0.8.0",
     "@playwright/test": "^1.63.0",
     "@sentry/cli": "^3.8.0",
     "@types/node": "^26.6.4",

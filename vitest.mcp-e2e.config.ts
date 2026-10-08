@@ -16,9 +16,10 @@ export default mergeConfig(
 			include: ['**/*.mcp-e2e.test.ts'],
 			testTimeout: mcpE2eTimeout,
 			hookTimeout: mcpE2eTimeout,
-			// Each file boots a real Wrangler dev server and shares the seeded
-			// e2e database, so files must not run in parallel.
+			// Each file boots the built origin and shares the seeded e2e
+			// database, so files must not run in parallel.
 			fileParallelism: false,
+			globalSetup: ['./tools/vitest-global-setup-mcp-e2e-origin.ts'],
 		},
 	}),
 )

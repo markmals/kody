@@ -22,7 +22,7 @@ const githubPlusNoteDiagram = [
 	'  participant appUi as app-ui',
 	'  participant originWorker as origin worker',
 	'  Caller->>vite: vite serve or vite build',
-	'  vite->>appUi: transform clientEntry(import.meta.url) and ?assets=',
+	'  vite->>appUi: transform clientEntry(import.meta.url) and supply the asset manifest',
 	'  Note over vite: serve writes origin local-dev vars; jobs+highlight stay in test',
 	'  vite->>originWorker: SSR entry from Wrangler main',
 	'  Caller->>originWorker: GET HTML route',

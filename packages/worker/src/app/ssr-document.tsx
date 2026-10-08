@@ -1,12 +1,9 @@
 /** @jsxImportSource remix/component */
 /** @jsxRuntime automatic */
 import { type Handle } from 'remix/component'
-import { HMR } from '#app/hmr.ts'
+import { type DocumentScripts } from '#app/client-assets.ts'
 import { AppRoot, type AppRootProps } from '#client/app-root.tsx'
-import {
-	buildClientEntryHref,
-	buildStylesheetHref,
-} from '#app/client-build-id.ts'
+import { buildStylesheetHref } from '#app/client-build-id.ts'
 import {
 	CANONICAL_ORIGIN_META_NAME,
 	DEFAULT_DOCUMENT_TITLE,
@@ -24,7 +21,6 @@ import {
 	type SentryClientConfig,
 } from '#universal/sentry-config.ts'
 
-export const CLIENT_ENTRY_HREF = '/client-entry.js'
 export const STYLESHEET_HREF = '/styles.css'
 
 export type SsrDocumentProps = AppRootProps & {
@@ -37,14 +33,13 @@ export type SsrDocumentProps = AppRootProps & {
 	 * dual-served legacy host during a domain migration.
 	 */
 	canonicalOrigin?: string
-	clientEntryHref?: string
-	stylesheetHref?: string
 	/**
-	 * Hashed chunk hrefs the entry (and current route's lazy area) will
-	 * import, from the build-time client manifest. Preloading them avoids a
-	 * request waterfall before hydration. Empty in dev.
+	 * The browser entry and the `modulepreload` hints for it and the current
+	 * route's lazy area, from the Vite manifest. Null in graphs Vite did not
+	 * build, which render no browser scripts.
 	 */
-	modulePreloadHrefs?: Array<string>
+	scripts: DocumentScripts | null
+	stylesheetHref?: string
 	/**
 	 * Full stylesheet text to inline into a `<style>` tag (removes the
 	 * render-blocking stylesheet request). When absent, the stylesheet
@@ -164,8 +159,7 @@ function isHomeDocumentUrl(url: string | undefined) {
 }
 
 export function SsrDocument(handle: Handle<SsrDocumentProps>) {
-	const clientEntryHref =
-		handle.props.clientEntryHref ?? buildClientEntryHref('dev')
+	const scripts = handle.props.scripts
 	const stylesheetHref =
 		handle.props.stylesheetHref ?? buildStylesheetHref('dev')
 	const scrollRestorationInlineScript = getScrollRestorationInlineScript()
@@ -278,8 +272,7 @@ export function SsrDocument(handle: Handle<SsrDocumentProps>) {
 						></script>
 					</>
 				) : null}
-				<link rel="modulepreload" href={clientEntryHref} />
-				{(handle.props.modulePreloadHrefs ?? []).map((href) => (
+				{(scripts?.preloads ?? []).map((href) => (
 					<link key={href} rel="modulepreload" href={href} />
 				))}
 				{handle.props.inlineStylesheet ? (
@@ -289,7 +282,6 @@ export function SsrDocument(handle: Handle<SsrDocumentProps>) {
 				)}
 			</head>
 			<body {...passwordManagerPageIgnore}>
-				<HMR />
 				<div id="root">
 					<AppRoot
 						url={handle.props.url}
@@ -306,7 +298,7 @@ export function SsrDocument(handle: Handle<SsrDocumentProps>) {
 				    view on a list/detail deep link. CSP allows this exact
 				    script via its sha256 hash — do not add `'unsafe-inline'`. */}
 				<script>{scrollRestorationInlineScript}</script>
-				<script type="module" src={clientEntryHref}></script>
+				{scripts ? <script type="module" src={scripts.href}></script> : null}
 			</body>
 		</html>
 	)

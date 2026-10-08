@@ -1,23 +1,24 @@
 import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { type Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { type CallToolRequest } from '@modelcontextprotocol/sdk/types.js'
+import { parse as parseDotenv } from 'dotenv'
 import getPort from 'get-port'
+import { inject } from 'vitest'
 import { createTestHarness } from 'wrangler'
 import {
 	captureOutput,
 	nodeBin,
 	spawnProcess,
 	stopProcess,
+	wranglerBin,
 } from '#mcp/test-process.ts'
 import { startCloudflareMock } from '#worker/test-support/cloudflare-mock-server.ts'
-import { ensureGuideCatalogModules } from './build-guide-catalog-modules.ts'
-import { ensureWorkerBundlerModules } from './build-worker-bundler-modules.ts'
 import {
 	authorizeOAuthClient,
 	closeMcpConnection,
@@ -40,6 +41,29 @@ const localhost = '127.0.0.1'
 const defaultWaitTimeoutMs = process.env.CI ? 60_000 : 45_000
 const perAttemptFetchTimeoutMs = 5_000
 const maxPortBindRetries = 5
+const workerEnvFilePath = 'packages/worker/.env'
+
+declare module 'vitest' {
+	export interface ProvidedContext {
+		/** `wrangler.json` of the Vite-built origin, from the suite's global setup. */
+		mcpE2eOriginWranglerConfigPath: string
+	}
+}
+
+/** The worker's local secrets, which Wrangler would read beside a source config. */
+async function readWorkerEnvFile() {
+	return parseDotenv(await readFile(path.join(projectRoot, workerEnvFilePath)))
+}
+
+/**
+ * The built origin config is already flattened to the test env; a
+ * `CLOUDFLARE_ENV` in the environment would make Wrangler look for an
+ * environment block the config no longer has.
+ */
+function builtOriginEnv(): NodeJS.ProcessEnv {
+	const { CLOUDFLARE_ENV: _flattenedAtBuild, ...env } = process.env
+	return env
+}
 
 type TestUser = AppAuthUser
 
@@ -90,6 +114,7 @@ export async function startDevServer(
 		return startDevServerWithCloudflareMock()
 	}
 	await applyMigrations(persistDir)
+	const originWranglerConfigPath = inject('mcpE2eOriginWranglerConfigPath')
 
 	// These smoke tests do not exercise Cloudflare APIs. Keeping that client
 	// unconfigured keeps MCP authentication independent of the email mock;
@@ -103,26 +128,31 @@ export async function startDevServer(
 		const origin = `http://${localhost}:${port}`
 		const proc = spawnProcess({
 			cmd: [
-				nodeBin,
-				'--env-file=packages/worker/.env',
-				'./wrangler-env.ts',
+				wranglerBin,
 				'dev',
 				'--local',
 				'--persist-to',
 				persistDir,
 				'--port',
 				String(port),
+				'--inspector-port',
+				'0',
 				'--ip',
 				localhost,
 				'--show-interactive-dev-session=false',
+				'--live-reload',
+				'false',
 				'--log-level',
 				'error',
-				// MCP smoke journeys do not call JOBS or HIGHLIGHT. Passing the
-				// origin config explicitly keeps wrangler-env from attaching those
-				// secondary configs; Wrangler's multi-config additional-module
-				// watcher can reload forever on Cloud Agent overlay filesystems.
+				// The built config is flattened to the test env and names only
+				// the origin; JOBS and HIGHLIGHT stay unbound because MCP smoke
+				// journeys never call them.
 				'--config',
-				'packages/worker/wrangler.jsonc',
+				originWranglerConfigPath,
+				'--env-file',
+				workerEnvFilePath,
+				'--var',
+				'WRANGLER_IS_LOCAL_DEV:true',
 				'--var',
 				`APP_BASE_URL:${origin}`,
 				'--var',
@@ -133,10 +163,7 @@ export async function startDevServer(
 				'CLOUDFLARE_ACCOUNT_ID:',
 			],
 			cwd: projectRoot,
-			env: {
-				...process.env,
-				CLOUDFLARE_ENV: 'test',
-			},
+			env: builtOriginEnv(),
 		})
 		const getStdout = captureOutput(proc.stdout)
 		const getStderr = captureOutput(proc.stderr)
@@ -171,7 +198,6 @@ export async function startDevServer(
 }
 
 async function startDevServerWithCloudflareMock() {
-	await Promise.all([ensureWorkerBundlerModules(), ensureGuideCatalogModules()])
 	const cloudflareMock = await startCloudflareMock(
 		`mcp-e2e-cloudflare-${randomUUID()}`,
 	)
@@ -185,9 +211,12 @@ async function startDevServerWithCloudflareMock() {
 		root: projectRoot,
 		workers: [
 			{
-				configPath: 'packages/worker/wrangler.jsonc',
-				env: 'test',
+				// Built by the suite's global setup and already flattened to the
+				// test env. Wrangler reads `.env` beside a config, and this one
+				// sits in a temp dir, so the worker's secrets are passed along.
+				configPath: inject('mcpE2eOriginWranglerConfigPath'),
 				vars: cloudflareVars,
+				secrets: await readWorkerEnvFile(),
 				bindingOverrides: {
 					CLOUDFLARE_API_MOCK: 'kody-mock-cloudflare-test',
 				},

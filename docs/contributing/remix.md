@@ -52,18 +52,33 @@ template:
   apply.
 - Production ships four product scripts via GitHub Actions. `npm run deploy`
   uploads origin only; there is no long-running `npm start` process.
-- Development uses Vite (`@pitlane/dev` + `@cloudflare/vite-plugin`) so origin
-  SSR runs in workerd with HMR. Production client and origin worker assets come
-  from `vite build`. Platform, runtime, jobs, and highlight stay auxiliary
-  workers in `vite dev` and separate Wrangler deploys in production.
+- Development uses Vite (`@pitlane/vite-plugin-remix` +
+  `@cloudflare/vite-plugin`) so origin SSR runs in workerd with HMR. Production
+  client and origin worker assets come from `vite build`. Platform, runtime,
+  jobs, and highlight stay auxiliary workers in `vite dev` and separate Wrangler
+  deploys in production.
 - Static files are served through the Workers Assets binding rather than
-  `remix/assets` or `remix/middleware/static`. Hydration uses
-  `clientEntry(import.meta.url, …)` and Pitlane `?assets=` imports. SSR
-  `renderToStream` must pass `resolveClientEntry` so the serialized entry
-  metadata (`<script id="rmx-data">`) points at the Vite hashed entry
-  (`/assets/entry-*.js`), not the deleted `/client-entry.js`. Vite resolves
-  imports itself, so no `importMap` is returned and the Remix import-map
-  polyfill is not used.
+  `remix/assets` or `remix/middleware/static`. Browser asset URLs come from the
+  `@pitlane/assets` resolver in `packages/worker/src/app/client-assets.ts`,
+  which reads the manifest Vite supplies for the dev server or build: the
+  document asks it for the client entry and the `modulepreload` hints of the
+  current lazy route area, and SSR `renderToStream` passes its
+  `resolveClientEntry` so the hydration metadata (`<script id="rmx-data">`)
+  names the hashed chunk of each `clientEntry(import.meta.url, …)` island. Kody
+  streams documents itself rather than through `remix/middleware/render`,
+  because that middleware resolves `<Frame>` sources with internal router
+  fetches while Kody inlines them from its frame registry (see
+  [frames](./frames.md)); the resolver is the one `render({ assets })` would
+  use. Vitest renders without a Vite build; there the resolver is absent, the
+  document renders no browser scripts, and Remix resolves islands by their raw
+  entry id. The MCP e2e suite builds the origin with Vite in the test env before
+  booting it with Wrangler, so it runs the deployed bundle shape. Chunk import
+  maps are off because the CSP forbids the inline `<script type="importmap">`
+  they require.
+- Server-only edits under `vite dev` reach the browser through the
+  `server:update` listener in `packages/worker/client/entry.tsx`, which calls
+  `revalidate` from `@pitlane/vite-plugin-remix/hmr` to refetch and reconcile
+  the page while islands keep their state.
 - Remix `run()` falls back to full document navigation when the browser lacks
   the Navigation API; do not add a `window.navigation` stub. `crypto.randomUUID`
   and constructable stylesheets are still polyfilled in

@@ -9,6 +9,7 @@
 		"packages/worker": {
 			"entry": [
 				"client/entry.tsx",
+				"client/app-root.tsx",
 				"src/mcp/capabilities/**/*.ts",
 				"src/mcp/instructions/**/*.ts"
 			],

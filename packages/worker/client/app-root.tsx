@@ -13,12 +13,8 @@ export type AppRootProps = {
 	internalError?: boolean
 }
 
-// `clientEntry()` throws when the entry ID is empty. Vite and Node keep the
-// source `import.meta.url`; Wrangler/workerd (MCP e2e) leaves it blank.
-const appRootEntryId = import.meta.url || '/client-entry.js#AppRoot'
-
 export const AppRoot: EntryComponent<AppRootProps> = clientEntry(
-	appRootEntryId,
+	import.meta.url,
 	function AppRoot(handle: Handle<AppRootProps>) {
 		return () => (
 			<RouterLocationProvider url={handle.props.url}>
